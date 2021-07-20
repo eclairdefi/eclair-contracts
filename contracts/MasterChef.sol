@@ -77,8 +77,8 @@ contract MasterChef is Ownable, ReentrancyGuard {
     IEclairReferral public eclairReferral;
     // Referral commission rate in basis points.
     uint16 public referralCommissionRate = 500;
-    // Max referral commission rate: 10%.
-    uint16 public constant MAXIMUM_REFERRAL_COMMISSION_RATE = 1000;
+    // Max referral commission rate: 5%.
+    uint16 public constant MAXIMUM_REFERRAL_COMMISSION_RATE = 500;
 
     // Max deposit fee
     uint16 public constant MAXIMUM_DEPOSIT_FEE = 499;

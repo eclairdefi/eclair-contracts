@@ -1,7 +1,5 @@
 // File: @openzeppelin\contracts\math\SafeMath.sol
 
-
-
 pragma solidity >=0.6.0 <0.8.0;
 
 /**
@@ -1352,10 +1350,14 @@ contract EclairToken is BEP20 {
     uint16 public transferTaxRate = 500;
     // Burn rate % of transfer tax. (default 30% x 5% = 1.5% of total amount).
     uint16 public burnRate = 30;
-    // Max transfer tax rate: 10%.
-    uint16 public constant MAXIMUM_TRANSFER_TAX_RATE = 1000;
+    // Max transfer tax rate: 5%.
+    uint16 public constant MAXIMUM_TRANSFER_TAX_RATE = 500;
     // Burn address
-    address public constant BURN_ADDRESS = 0x000000000000000000000000000000000000dEaD;
+    address public constant BURN_ADDRESS =
+        0x000000000000000000000000000000000000dEaD;
+
+    // Farm start block
+    uint256 public constant FARM_START_BLOCK = 9600000;
 
     // Max transfer amount rate in basis points. (default is 0.5% of total supply)
     uint16 public maxTransferAmountRate = 50;
@@ -1376,27 +1378,65 @@ contract EclairToken is BEP20 {
     address private _operator;
 
     // Events
-    event OperatorTransferred(address indexed previousOperator, address indexed newOperator);
-    event TransferTaxRateUpdated(address indexed operator, uint256 previousRate, uint256 newRate);
-    event BurnRateUpdated(address indexed operator, uint256 previousRate, uint256 newRate);
-    event MaxTransferAmountRateUpdated(address indexed operator, uint256 previousRate, uint256 newRate);
+    event OperatorTransferred(
+        address indexed previousOperator,
+        address indexed newOperator
+    );
+    event TransferTaxRateUpdated(
+        address indexed operator,
+        uint256 previousRate,
+        uint256 newRate
+    );
+    event BurnRateUpdated(
+        address indexed operator,
+        uint256 previousRate,
+        uint256 newRate
+    );
+    event MaxTransferAmountRateUpdated(
+        address indexed operator,
+        uint256 previousRate,
+        uint256 newRate
+    );
     event SwapAndLiquifyEnabledUpdated(address indexed operator, bool enabled);
-    event MinAmountToLiquifyUpdated(address indexed operator, uint256 previousAmount, uint256 newAmount);
-    event eclairSwapRouterUpdated(address indexed operator, address indexed router, address indexed pair);
-    event SwapAndLiquify(uint256 tokensSwapped, uint256 ethReceived, uint256 tokensIntoLiqudity);
+    event MinAmountToLiquifyUpdated(
+        address indexed operator,
+        uint256 previousAmount,
+        uint256 newAmount
+    );
+    event eclairSwapRouterUpdated(
+        address indexed operator,
+        address indexed router,
+        address indexed pair
+    );
+    event SwapAndLiquify(
+        uint256 tokensSwapped,
+        uint256 ethReceived,
+        uint256 tokensIntoLiqudity
+    );
 
     modifier onlyOperator() {
-        require(_operator == msg.sender, "operator: caller is not the operator");
+        require(
+            _operator == msg.sender,
+            "operator: caller is not the operator"
+        );
         _;
     }
 
-    modifier antiWhale(address sender, address recipient, uint256 amount) {
+    modifier antiWhale(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) {
         if (maxTransferAmount() > 0) {
             if (
-                _excludedFromAntiWhale[sender] == false
-                && _excludedFromAntiWhale[recipient] == false
+                block.number > FARM_START_BLOCK ||
+                (_excludedFromAntiWhale[sender] == false &&
+                    _excludedFromAntiWhale[recipient] == false)
             ) {
-                require(amount <= maxTransferAmount(), "ECLAIR::antiWhale: Transfer amount exceeds the maxTransferAmount");
+                require(
+                    amount <= maxTransferAmount(),
+                    "ECLAIR::antiWhale: Transfer amount exceeds the maxTransferAmount"
+                );
             }
         }
         _;
@@ -1435,15 +1475,19 @@ contract EclairToken is BEP20 {
     }
 
     /// @dev overrides transfer function to meet tokenomics of ECLAIR
-    function _transfer(address sender, address recipient, uint256 amount) internal virtual override antiWhale(sender, recipient, amount) {
+    function _transfer(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) internal virtual override antiWhale(sender, recipient, amount) {
         // swap and liquify
         if (
-            swapAndLiquifyEnabled == true
-            && _inSwapAndLiquify == false
-            && address(eclairSwapRouter) != address(0)
-            && eclairSwapPair != address(0)
-            && sender != eclairSwapPair
-            && sender != owner()
+            swapAndLiquifyEnabled == true &&
+            _inSwapAndLiquify == false &&
+            address(eclairSwapRouter) != address(0) &&
+            eclairSwapPair != address(0) &&
+            sender != eclairSwapPair &&
+            sender != owner()
         ) {
             swapAndLiquify();
         }
@@ -1455,11 +1499,17 @@ contract EclairToken is BEP20 {
             uint256 taxAmount = amount.mul(transferTaxRate).div(10000);
             uint256 burnAmount = taxAmount.mul(burnRate).div(100);
             uint256 liquidityAmount = taxAmount.sub(burnAmount);
-            require(taxAmount == burnAmount + liquidityAmount, "ECLAIR::transfer: Burn value invalid");
+            require(
+                taxAmount == burnAmount + liquidityAmount,
+                "ECLAIR::transfer: Burn value invalid"
+            );
 
             // default 95% of transfer sent to recipient
             uint256 sendAmount = amount.sub(taxAmount);
-            require(amount == sendAmount + taxAmount, "ECLAIR::transfer: Tax value invalid");
+            require(
+                amount == sendAmount + taxAmount,
+                "ECLAIR::transfer: Tax value invalid"
+            );
 
             super._transfer(sender, BURN_ADDRESS, burnAmount);
             super._transfer(sender, address(this), liquidityAmount);
@@ -1472,7 +1522,9 @@ contract EclairToken is BEP20 {
     function swapAndLiquify() private lockTheSwap transferTaxFree {
         uint256 contractTokenBalance = balanceOf(address(this));
         uint256 maxTransferAmount = maxTransferAmount();
-        contractTokenBalance = contractTokenBalance > maxTransferAmount ? maxTransferAmount : contractTokenBalance;
+        contractTokenBalance = contractTokenBalance > maxTransferAmount
+            ? maxTransferAmount
+            : contractTokenBalance;
 
         if (contractTokenBalance >= minAmountToLiquify) {
             // only min amount to liquify
@@ -1546,7 +1598,11 @@ contract EclairToken is BEP20 {
     /**
      * @dev Returns the address is excluded from antiWhale or not.
      */
-    function isExcludedFromAntiWhale(address _account) public view returns (bool) {
+    function isExcludedFromAntiWhale(address _account)
+        public
+        view
+        returns (bool)
+    {
         return _excludedFromAntiWhale[_account];
     }
 
@@ -1557,9 +1613,19 @@ contract EclairToken is BEP20 {
      * @dev Update the transfer tax rate.
      * Can only be called by the current operator.
      */
-    function updateTransferTaxRate(uint16 _transferTaxRate) public onlyOperator {
-        require(_transferTaxRate <= MAXIMUM_TRANSFER_TAX_RATE, "ECLAIR::updateTransferTaxRate: Transfer tax rate must not exceed the maximum rate.");
-        emit TransferTaxRateUpdated(msg.sender, transferTaxRate, _transferTaxRate);
+    function updateTransferTaxRate(uint16 _transferTaxRate)
+        public
+        onlyOperator
+    {
+        require(
+            _transferTaxRate <= MAXIMUM_TRANSFER_TAX_RATE,
+            "ECLAIR::updateTransferTaxRate: Transfer tax rate must not exceed the maximum rate."
+        );
+        emit TransferTaxRateUpdated(
+            msg.sender,
+            transferTaxRate,
+            _transferTaxRate
+        );
         transferTaxRate = _transferTaxRate;
     }
 
@@ -1568,7 +1634,10 @@ contract EclairToken is BEP20 {
      * Can only be called by the current operator.
      */
     function updateBurnRate(uint16 _burnRate) public onlyOperator {
-        require(_burnRate <= 100, "ECLAIR::updateBurnRate: Burn rate must not exceed the maximum rate.");
+        require(
+            _burnRate <= 100,
+            "ECLAIR::updateBurnRate: Burn rate must not exceed the maximum rate."
+        );
         emit BurnRateUpdated(msg.sender, burnRate, _burnRate);
         burnRate = _burnRate;
     }
@@ -1577,9 +1646,19 @@ contract EclairToken is BEP20 {
      * @dev Update the max transfer amount rate.
      * Can only be called by the current operator.
      */
-    function updateMaxTransferAmountRate(uint16 _maxTransferAmountRate) public onlyOperator {
-        require(_maxTransferAmountRate <= 10000, "ECLAIR::updateMaxTransferAmountRate: Max transfer amount rate must not exceed the maximum rate.");
-        emit MaxTransferAmountRateUpdated(msg.sender, maxTransferAmountRate, _maxTransferAmountRate);
+    function updateMaxTransferAmountRate(uint16 _maxTransferAmountRate)
+        public
+        onlyOperator
+    {
+        require(
+            _maxTransferAmountRate <= 10000,
+            "ECLAIR::updateMaxTransferAmountRate: Max transfer amount rate must not exceed the maximum rate."
+        );
+        emit MaxTransferAmountRateUpdated(
+            msg.sender,
+            maxTransferAmountRate,
+            _maxTransferAmountRate
+        );
         maxTransferAmountRate = _maxTransferAmountRate;
     }
 
@@ -1588,7 +1667,11 @@ contract EclairToken is BEP20 {
      * Can only be called by the current operator.
      */
     function updateMinAmountToLiquify(uint256 _minAmount) public onlyOperator {
-        emit MinAmountToLiquifyUpdated(msg.sender, minAmountToLiquify, _minAmount);
+        emit MinAmountToLiquifyUpdated(
+            msg.sender,
+            minAmountToLiquify,
+            _minAmount
+        );
         minAmountToLiquify = _minAmount;
     }
 
@@ -1596,7 +1679,10 @@ contract EclairToken is BEP20 {
      * @dev Exclude or include an address from antiWhale.
      * Can only be called by the current operator.
      */
-    function setExcludedFromAntiWhale(address _account, bool _excluded) public onlyOperator {
+    function setExcludedFromAntiWhale(address _account, bool _excluded)
+        public
+        onlyOperator
+    {
         _excludedFromAntiWhale[_account] = _excluded;
     }
 
@@ -1615,9 +1701,19 @@ contract EclairToken is BEP20 {
      */
     function updateeclairSwapRouter(address _router) public onlyOperator {
         eclairSwapRouter = IUniswapV2Router02(_router);
-        eclairSwapPair = IUniswapV2Factory(eclairSwapRouter.factory()).getPair(address(this), eclairSwapRouter.WETH());
-        require(eclairSwapPair != address(0), "ECLAIR::updateeclairSwapRouter: Invalid pair address.");
-        emit eclairSwapRouterUpdated(msg.sender, address(eclairSwapRouter), eclairSwapPair);
+        eclairSwapPair = IUniswapV2Factory(eclairSwapRouter.factory()).getPair(
+            address(this),
+            eclairSwapRouter.WETH()
+        );
+        require(
+            eclairSwapPair != address(0),
+            "ECLAIR::updateeclairSwapRouter: Invalid pair address."
+        );
+        emit eclairSwapRouterUpdated(
+            msg.sender,
+            address(eclairSwapRouter),
+            eclairSwapPair
+        );
     }
 
     /**
@@ -1632,7 +1728,10 @@ contract EclairToken is BEP20 {
      * Can only be called by the current operator.
      */
     function transferOperator(address newOperator) public onlyOperator {
-        require(newOperator != address(0), "ECLAIR::transferOperator: new operator is the zero address");
+        require(
+            newOperator != address(0),
+            "ECLAIR::transferOperator: new operator is the zero address"
+        );
         emit OperatorTransferred(_operator, newOperator);
         _operator = newOperator;
     }
@@ -1644,7 +1743,7 @@ contract EclairToken is BEP20 {
     // https://github.com/compound-finance/compound-protocol/blob/master/contracts/Governance/Comp.sol
 
     /// @dev A record of each accounts delegate
-    mapping (address => address) internal _delegates;
+    mapping(address => address) internal _delegates;
 
     /// @notice A checkpoint for marking number of votes from a given block
     struct Checkpoint {
@@ -1653,42 +1752,50 @@ contract EclairToken is BEP20 {
     }
 
     /// @notice A record of votes checkpoints for each account, by index
-    mapping (address => mapping (uint32 => Checkpoint)) public checkpoints;
+    mapping(address => mapping(uint32 => Checkpoint)) public checkpoints;
 
     /// @notice The number of checkpoints for each account
-    mapping (address => uint32) public numCheckpoints;
+    mapping(address => uint32) public numCheckpoints;
 
     /// @notice The EIP-712 typehash for the contract's domain
-    bytes32 public constant DOMAIN_TYPEHASH = keccak256("EIP712Domain(string name,uint256 chainId,address verifyingContract)");
+    bytes32 public constant DOMAIN_TYPEHASH =
+        keccak256(
+            "EIP712Domain(string name,uint256 chainId,address verifyingContract)"
+        );
 
     /// @notice The EIP-712 typehash for the delegation struct used by the contract
-    bytes32 public constant DELEGATION_TYPEHASH = keccak256("Delegation(address delegatee,uint256 nonce,uint256 expiry)");
+    bytes32 public constant DELEGATION_TYPEHASH =
+        keccak256("Delegation(address delegatee,uint256 nonce,uint256 expiry)");
 
     /// @notice A record of states for signing / validating signatures
-    mapping (address => uint) public nonces;
+    mapping(address => uint256) public nonces;
 
-      /// @notice An event thats emitted when an account changes its delegate
-    event DelegateChanged(address indexed delegator, address indexed fromDelegate, address indexed toDelegate);
+    /// @notice An event thats emitted when an account changes its delegate
+    event DelegateChanged(
+        address indexed delegator,
+        address indexed fromDelegate,
+        address indexed toDelegate
+    );
 
     /// @notice An event thats emitted when a delegate account's vote balance changes
-    event DelegateVotesChanged(address indexed delegate, uint previousBalance, uint newBalance);
+    event DelegateVotesChanged(
+        address indexed delegate,
+        uint256 previousBalance,
+        uint256 newBalance
+    );
 
     /**
      * @notice Delegate votes from `msg.sender` to `delegatee`
      * @param delegator The address to get delegatee for
      */
-    function delegates(address delegator)
-        external
-        view
-        returns (address)
-    {
+    function delegates(address delegator) external view returns (address) {
         return _delegates[delegator];
     }
 
-   /**
-    * @notice Delegate votes from `msg.sender` to `delegatee`
-    * @param delegatee The address to delegate votes to
-    */
+    /**
+     * @notice Delegate votes from `msg.sender` to `delegatee`
+     * @param delegatee The address to delegate votes to
+     */
     function delegate(address delegatee) external {
         return _delegate(msg.sender, delegatee);
     }
@@ -1704,14 +1811,12 @@ contract EclairToken is BEP20 {
      */
     function delegateBySig(
         address delegatee,
-        uint nonce,
-        uint expiry,
+        uint256 nonce,
+        uint256 expiry,
         uint8 v,
         bytes32 r,
         bytes32 s
-    )
-        external
-    {
+    ) external {
         bytes32 domainSeparator = keccak256(
             abi.encode(
                 DOMAIN_TYPEHASH,
@@ -1722,25 +1827,22 @@ contract EclairToken is BEP20 {
         );
 
         bytes32 structHash = keccak256(
-            abi.encode(
-                DELEGATION_TYPEHASH,
-                delegatee,
-                nonce,
-                expiry
-            )
+            abi.encode(DELEGATION_TYPEHASH, delegatee, nonce, expiry)
         );
 
         bytes32 digest = keccak256(
-            abi.encodePacked(
-                "\x19\x01",
-                domainSeparator,
-                structHash
-            )
+            abi.encodePacked("\x19\x01", domainSeparator, structHash)
         );
 
         address signatory = ecrecover(digest, v, r, s);
-        require(signatory != address(0), "ECLAIR::delegateBySig: invalid signature");
-        require(nonce == nonces[signatory]++, "ECLAIR::delegateBySig: invalid nonce");
+        require(
+            signatory != address(0),
+            "ECLAIR::delegateBySig: invalid signature"
+        );
+        require(
+            nonce == nonces[signatory]++,
+            "ECLAIR::delegateBySig: invalid nonce"
+        );
         require(now <= expiry, "ECLAIR::delegateBySig: signature expired");
         return _delegate(signatory, delegatee);
     }
@@ -1750,13 +1852,10 @@ contract EclairToken is BEP20 {
      * @param account The address to get votes balance
      * @return The number of current votes for `account`
      */
-    function getCurrentVotes(address account)
-        external
-        view
-        returns (uint256)
-    {
+    function getCurrentVotes(address account) external view returns (uint256) {
         uint32 nCheckpoints = numCheckpoints[account];
-        return nCheckpoints > 0 ? checkpoints[account][nCheckpoints - 1].votes : 0;
+        return
+            nCheckpoints > 0 ? checkpoints[account][nCheckpoints - 1].votes : 0;
     }
 
     /**
@@ -1766,12 +1865,15 @@ contract EclairToken is BEP20 {
      * @param blockNumber The block number to get the vote balance at
      * @return The number of votes the account had as of the given block
      */
-    function getPriorVotes(address account, uint blockNumber)
+    function getPriorVotes(address account, uint256 blockNumber)
         external
         view
         returns (uint256)
     {
-        require(blockNumber < block.number, "ECLAIR::getPriorVotes: not yet determined");
+        require(
+            blockNumber < block.number,
+            "ECLAIR::getPriorVotes: not yet determined"
+        );
 
         uint32 nCheckpoints = numCheckpoints[account];
         if (nCheckpoints == 0) {
@@ -1804,9 +1906,7 @@ contract EclairToken is BEP20 {
         return checkpoints[account][lower].votes;
     }
 
-    function _delegate(address delegator, address delegatee)
-        internal
-    {
+    function _delegate(address delegator, address delegatee) internal {
         address currentDelegate = _delegates[delegator];
         uint256 delegatorBalance = balanceOf(delegator); // balance of underlying ECLAIRs (not scaled);
         _delegates[delegator] = delegatee;
@@ -1816,12 +1916,18 @@ contract EclairToken is BEP20 {
         _moveDelegates(currentDelegate, delegatee, delegatorBalance);
     }
 
-    function _moveDelegates(address srcRep, address dstRep, uint256 amount) internal {
+    function _moveDelegates(
+        address srcRep,
+        address dstRep,
+        uint256 amount
+    ) internal {
         if (srcRep != dstRep && amount > 0) {
             if (srcRep != address(0)) {
                 // decrease old representative
                 uint32 srcRepNum = numCheckpoints[srcRep];
-                uint256 srcRepOld = srcRepNum > 0 ? checkpoints[srcRep][srcRepNum - 1].votes : 0;
+                uint256 srcRepOld = srcRepNum > 0
+                    ? checkpoints[srcRep][srcRepNum - 1].votes
+                    : 0;
                 uint256 srcRepNew = srcRepOld.sub(amount);
                 _writeCheckpoint(srcRep, srcRepNum, srcRepOld, srcRepNew);
             }
@@ -1829,7 +1935,9 @@ contract EclairToken is BEP20 {
             if (dstRep != address(0)) {
                 // increase new representative
                 uint32 dstRepNum = numCheckpoints[dstRep];
-                uint256 dstRepOld = dstRepNum > 0 ? checkpoints[dstRep][dstRepNum - 1].votes : 0;
+                uint256 dstRepOld = dstRepNum > 0
+                    ? checkpoints[dstRep][dstRepNum - 1].votes
+                    : 0;
                 uint256 dstRepNew = dstRepOld.add(amount);
                 _writeCheckpoint(dstRep, dstRepNum, dstRepOld, dstRepNew);
             }
@@ -1841,29 +1949,42 @@ contract EclairToken is BEP20 {
         uint32 nCheckpoints,
         uint256 oldVotes,
         uint256 newVotes
-    )
-        internal
-    {
-        uint32 blockNumber = safe32(block.number, "ECLAIR::_writeCheckpoint: block number exceeds 32 bits");
+    ) internal {
+        uint32 blockNumber = safe32(
+            block.number,
+            "ECLAIR::_writeCheckpoint: block number exceeds 32 bits"
+        );
 
-        if (nCheckpoints > 0 && checkpoints[delegatee][nCheckpoints - 1].fromBlock == blockNumber) {
+        if (
+            nCheckpoints > 0 &&
+            checkpoints[delegatee][nCheckpoints - 1].fromBlock == blockNumber
+        ) {
             checkpoints[delegatee][nCheckpoints - 1].votes = newVotes;
         } else {
-            checkpoints[delegatee][nCheckpoints] = Checkpoint(blockNumber, newVotes);
+            checkpoints[delegatee][nCheckpoints] = Checkpoint(
+                blockNumber,
+                newVotes
+            );
             numCheckpoints[delegatee] = nCheckpoints + 1;
         }
 
         emit DelegateVotesChanged(delegatee, oldVotes, newVotes);
     }
 
-    function safe32(uint n, string memory errorMessage) internal pure returns (uint32) {
+    function safe32(uint256 n, string memory errorMessage)
+        internal
+        pure
+        returns (uint32)
+    {
         require(n < 2**32, errorMessage);
         return uint32(n);
     }
 
-    function getChainId() internal pure returns (uint) {
+    function getChainId() internal pure returns (uint256) {
         uint256 chainId;
-        assembly { chainId := chainid() }
+        assembly {
+            chainId := chainid()
+        }
         return chainId;
     }
 }
@@ -1947,8 +2068,8 @@ contract MasterChef is Ownable, ReentrancyGuard {
     IEclairReferral public eclairReferral;
     // Referral commission rate in basis points.
     uint16 public referralCommissionRate = 500;
-    // Max referral commission rate: 10%.
-    uint16 public constant MAXIMUM_REFERRAL_COMMISSION_RATE = 1000;
+    // Max referral commission rate: 5%.
+    uint16 public constant MAXIMUM_REFERRAL_COMMISSION_RATE = 500;
 
     // Max deposit fee
     uint16 public constant MAXIMUM_DEPOSIT_FEE = 499;
